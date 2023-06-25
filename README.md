@@ -1,6 +1,6 @@
 # ArgoCD Playground Using Minikube
 
-The purpose of this project is to set up a GitOps playground in Minikube using ArgoCD and Gitea. This allows users to easily test various scenarios. The deployment automation is achieved through the use of an Ansible playbook and custom Kubernetes jobs, which facilitate seamless integration between services.
+The purpose of this project is to set up a GitOps playground in Minikube using ArgoCD and Gitea. This allows users to easily test various scenarios. The deployment automation is achieved through the use of an Ansible playbook and custom Kubernetes jobs, which facilitate integration between services.
 
 ## Prerequisites
 
