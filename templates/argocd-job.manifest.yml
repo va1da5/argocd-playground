@@ -1,0 +1,119 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-orchestrate
+  namespace: argocd
+data:
+  requirements.txt: |
+    requests==2.31.0
+
+  job.py: |
+    from urllib.parse import urljoin
+    import requests
+    import os
+
+    HOST = "{{ host }}"
+    USERNAME = "{{ username }}"
+    PASSWORD = "{{ password }}"
+
+    class ArgoCD:
+        host: str
+
+        def __init__(self, host: str, **kwargs):
+            self.session = requests.Session(**kwargs)
+            self.session.verify = False
+            self.session.get(host)
+            self.host = host
+            self._kwargs = kwargs
+
+        def get_url(self, path: str) -> str:
+            return urljoin(self.host, path)
+
+        def auth(self, username: str, password: str) -> requests.Response:
+            data = {"username": username, "password": password}
+            return self.session.post(
+                self.get_url("/api/v1/session"), json=data, **self._kwargs
+            )
+
+        def create_application(
+            self, name: str, namespace: str, repo_url: str, repo_path: str = "."
+        ) -> requests.Response:
+            data = {
+                "apiVersion": "argoproj.io/v1alpha1",
+                "kind": "Application",
+                "metadata": {"name": name},
+                "spec": {
+                    "destination": {
+                        "name": "",
+                        "namespace": namespace,
+                        "server": "https://kubernetes.default.svc",
+                    },
+                    "source": {
+                        "path": repo_path,
+                        "repoURL": repo_url,
+                        "targetRevision": "HEAD",
+                    },
+                    "sources": [],
+                    "project": "default",
+                    "syncPolicy": {"automated": {"prune": True, "selfHeal": True}},
+                },
+            }
+
+            return self.session.post(
+                self.get_url("/api/v1/applications"), json=data, **self._kwargs
+            )
+
+
+    def validate(response: requests.Response):
+        if response.status_code > 200:
+            print(response.headers)
+            print(response.text)
+            raise RuntimeError(response.text)
+
+
+    def main():
+        argo = ArgoCD(HOST)
+
+        validate(argo.auth(USERNAME, PASSWORD))
+        argo.create_application(
+            "demo", "demo-app", "http://gitea-http.gitea.svc:3000/main/gitops.git"
+        )
+
+        print("Done!")
+
+
+    if __name__ == "__main__":
+        main()
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: argocd-orchestrate
+  namespace: argocd
+spec:
+  template:
+    spec:
+      volumes:
+        - name: python-configmap-volume
+          configMap:
+            name: argocd-orchestrate
+
+      containers:
+        - name: python
+          image: python:3.11.4-slim
+          command: ["sh"]
+          args:
+            - -c
+            - pip install -r requirements.txt && python job.py
+          volumeMounts:
+            - mountPath: /app
+              name: python-configmap-volume
+          workingDir: /app
+          env:
+            - name: CA_BUNDLE
+              value: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+      restartPolicy: Never
+  ttlSecondsAfterFinished: 30
+  backoffLimit: 1

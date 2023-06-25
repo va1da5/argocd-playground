@@ -1,0 +1,11 @@
+gitea:
+  ## @param gitea.admin.username Username for the Gitea admin user
+  ## @param gitea.admin.existingSecret Use an existing secret to store admin user credentials
+  ## @param gitea.admin.password Password for the Gitea admin user
+  ## @param gitea.admin.email Email for the Gitea admin user
+  admin:
+    # existingSecret: gitea-admin-secret
+    existingSecret:
+    username: {{username}}
+    password: {{password}}
+    email: "gitea@local.domain"

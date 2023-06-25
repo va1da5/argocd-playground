@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: application
+  namespace: demo-app
+spec:
+  containers:
+    - name: application
+      image: "{{ image }}"
+      command: ["sh"]
+      args: ["-c", "{{ command }}"]

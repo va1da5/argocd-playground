@@ -1,0 +1,117 @@
+---
+- name: Create DEMO application namespace
+  hosts: localhost
+  tags: ["demo"]
+  tasks:
+    - name: Create demo-app k8s namespace
+      kubernetes.core.k8s:
+        name: demo-app
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Create demo app
+      vars:
+        image: python:3.11.4-slim
+        command: sleep 365d
+      kubernetes.core.k8s:
+        state: present
+        namespace: demo-app
+        template: demo-app.manifest.yml
+
+- name: Install Gitea
+  hosts: localhost
+  tags: ["gitea"]
+  vars:
+    host: http://gitea-http.gitea.svc:3000
+    username: gitea_admin
+    password: Passw0rd!
+  tasks:
+    - name: Create a k8s namespace
+      kubernetes.core.k8s:
+        name: gitea
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add gitea-charts chart repo
+      kubernetes.core.helm_repository:
+        name: gitea-charts
+        repo_url: "https://dl.gitea.io/charts/"
+
+    - name: Deploy 8.3.0 version of Gitea chart with custom values
+      kubernetes.core.helm:
+        name: gitea
+        chart_ref: gitea-charts/gitea
+        chart_version: 8.3.0
+        namespace: gitea
+        values: "{{ lookup('template', 'gitea.values.yml') | from_yaml }}"
+
+    - name: Wait until ready
+      ansible.builtin.shell: kubectl -n gitea rollout status --watch --timeout=1s statefulset/gitea | grep complete
+      register: rollout_status
+      until: "rollout_status is not failed"
+      retries: 12
+      delay: 10
+
+    - name: Create demo application
+      tags: ["gitea-configure"]
+      kubernetes.core.k8s:
+        state: present
+        namespace: gitea
+        template: gitea-job.manifest.yml
+
+    - name: Print details
+      ansible.builtin.debug:
+        msg:
+          - "Enable port-forwarding: kubectl --namespace gitea port-forward svc/gitea-http 3000:3000"
+          - "Host: http://localhost:3000"
+          - "Username: {{ username }}"
+          - "Password: {{ password }}"
+
+- name: Deploy ArgoCD
+  hosts: localhost
+  tags: ["argocd"]
+  tasks:
+    - name: Create a k8s namespace
+      kubernetes.core.k8s:
+        name: argocd
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Create a Deployment by reading the definition from a remote file
+      kubernetes.core.k8s:
+        state: present
+        namespace: argocd
+        src: https://raw.githubusercontent.com/argoproj/argo-cd/v2.7.6/manifests/install.yaml
+
+    - name: Wait until ready
+      ansible.builtin.shell: kubectl -n argocd rollout status --watch --timeout=1s deployment/argocd-server | grep "successfully rolled out"
+      register: rollout_status
+      until: "rollout_status is not failed"
+      retries: 12
+      delay: 10
+
+    - name: Get argocd admin secret value
+      tags: ["argocd-create-app"]
+      ansible.builtin.shell: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 --decode
+      register: secret_output
+
+    - name: Print details
+      ansible.builtin.debug:
+        msg:
+          - "Enable port-forwarding: kubectl --namespace argocd port-forward svc/argocd-server 8443:443"
+          - "Host: https://localhost:8443"
+          - "Username: admin"
+          - "Password: {{ secret_output.stdout }}"
+
+    - name: Create demo application
+      tags: ["argocd-create-app"]
+      vars:
+        host: https://argocd-server.argocd.svc:443
+        username: admin
+        password: "{{ secret_output.stdout }}"
+      kubernetes.core.k8s:
+        state: present
+        template: "argocd-job.manifest.yml"

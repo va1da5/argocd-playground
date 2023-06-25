@@ -1,0 +1,198 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-orchestrate
+  namespace: gitea
+data:
+  requirements.txt: |
+    requests==2.31.0
+
+  job.py: |
+    import requests
+
+    HOST = "{{ host }}"
+    USERNAME = "{{ username }}"
+    PASSWORD = "{{ password }}"
+
+
+    def authenticate(
+        session: requests.Session, username: str = None, password: str = None
+    ) -> requests.Response:
+        params = {
+            "_csrf": session.cookies.get("_csrf"),
+            "user_name": username,
+            "password": password,
+        }
+
+        return session.post(f"{HOST}/user/login", data=params)
+
+
+    def create_org(session: requests.Session, name: str) -> requests.Response:
+        params = {
+            "_csrf": session.cookies.get("_csrf"),
+            "org_name": name,
+            "visibility": 0,
+            "repo_admin_change_team_access": "on",
+        }
+
+        return session.post(f"{HOST}/org/create", data=params)
+
+
+    def create_repo(session: requests.Session, name: str) -> requests.Response:
+        params = {
+            "_csrf": session.cookies.get("_csrf"),
+            "uid": 2,
+            "repo_name": name,
+            "description": "",
+            "repo_template": "",
+            "issue_labels": "",
+            "gitignores": "",
+            "license": "",
+            "readme": "Default",
+            "default_branch": "main",
+            "trust_model": "default",
+        }
+
+        return session.post(f"{HOST}/repo/create", data=params)
+
+
+    def validate(response: requests.Response):
+        if response.status_code > 400:
+            print(response.headers)
+            print(response.text)
+            raise RuntimeError(response.text)
+
+
+    def main():
+        session = requests.Session()
+        session.get(HOST)
+
+        validate(authenticate(session, USERNAME, PASSWORD))
+        validate(create_org(session, "main"))
+        validate(create_repo(session, "gitops"))
+
+        print("Done!")
+
+
+    if __name__ == "__main__":
+        main()
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-gitops-demo
+  namespace: gitea
+data:
+  deploy.yml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: demo-deployment
+      labels:
+        app: alpine
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: alpine
+      template:
+        metadata:
+          labels:
+            app: alpine
+        spec:
+          containers:
+          - name: alpine
+            image: alpine:latest
+            command: ["sh"]
+            args:
+              - -c
+              - echo "Hello World!" && sleep 365d
+
+  README.md: |
+    # GitOps DEMO Repo
+
+    The repository serves as an initial point for conducting additional tests on the integration of GitOps with ArgoCD and Kubernetes.
+
+  push.sh: |
+    #!/usr/bin/bash
+
+    apt update
+    apt install -y git
+
+    git config --global user.email "admin@gitea-http.gitea.svc"
+    git config --global user.name "Gitea"
+    git config --global init.defaultBranch main
+
+    mkdir /tmp-repo
+
+    cp README.md /tmp-repo
+    cp deploy.yml /tmp-repo
+
+    cd /tmp-repo
+
+    git init
+    git add .
+    git commit -m "first commit"
+    git remote add origin http://gitea-http.gitea.svc:3000/main/gitops.git
+    git push -u origin main
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitea-git-credentials
+  namespace: gitea
+data:
+  .netrc: |
+    machine gitea-http.gitea.svc
+          login {{ username }}
+          password {{ password }}
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gitea-orchestrate
+  namespace: gitea
+spec:
+  template:
+    spec:
+      volumes:
+        - name: gitea-orchestrate-volume
+          configMap:
+            name: gitea-orchestrate
+
+        - name: gitea-gitops-demo-volume
+          configMap:
+            name: gitea-gitops-demo
+
+        - name: gitea-git-credentials-volume
+          configMap:
+            name: gitea-git-credentials
+            items:
+              - key: .netrc
+                path: .netrc
+
+      containers:
+        - name: python
+          image: python:3.11.4-slim
+          command: ["sh"]
+          args:
+            - -c
+            - ls -la && pip install -r requirements.txt && python job.py && cd /gitops && bash push.sh
+          volumeMounts:
+            - mountPath: /job
+              name: gitea-orchestrate-volume
+
+            - mountPath: /gitops
+              name: gitea-gitops-demo-volume
+
+            - mountPath: /root/.netrc
+              name: gitea-git-credentials-volume
+              subPath: .netrc
+          workingDir: /job
+      restartPolicy: Never
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 30

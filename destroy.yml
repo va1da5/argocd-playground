@@ -1,0 +1,44 @@
+---
+- name: Destroy Demo application
+  hosts: localhost
+  tags: ["demo"]
+  tasks:
+    - name: Delete demo-app namespace
+      kubernetes.core.k8s:
+        name: demo-app
+        api_version: v1
+        kind: Namespace
+        state: absent
+
+- name: Destroy ArgoCD
+  hosts: localhost
+  tags: ["argocd"]
+  tasks:
+    - name: Destroy ArgoCD resources
+      kubernetes.core.k8s:
+        state: absent
+        namespace: argocd
+        src: https://raw.githubusercontent.com/argoproj/argo-cd/v2.7.6/manifests/install.yaml
+
+    - name: Delete argocd namespace
+      kubernetes.core.k8s:
+        name: argocd
+        api_version: v1
+        kind: Namespace
+        state: absent
+
+- name: Destroy Gitea
+  hosts: localhost
+  tags: ["gitea"]
+  tasks:
+    - kubernetes.core.helm:
+        name: gitea
+        namespace: gitea
+        state: absent
+
+    - name: Delete gitea namespace
+      kubernetes.core.k8s:
+        name: gitea
+        api_version: v1
+        kind: Namespace
+        state: absent
