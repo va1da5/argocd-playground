@@ -3,9 +3,9 @@ import requests
 import re
 import urllib.parse
 
-HOST = "http://localhost:8000"
-USERNAME = "admin"
-PASSWORD = "TRVIyrWQuBrpOr9EnNfMIo"
+HOST = "{{ host }}"
+USERNAME = "{{ username }}"
+PASSWORD = "{{ password }}"
 
 
 def authenticate(
