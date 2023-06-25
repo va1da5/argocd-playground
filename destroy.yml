@@ -42,3 +42,19 @@
         api_version: v1
         kind: Namespace
         state: absent
+
+- name: Destroy Jenkins
+  hosts: localhost
+  tags: ["jenkins"]
+  tasks:
+    - kubernetes.core.helm:
+        name: jenkins
+        namespace: jenkins
+        state: absent
+
+    - name: Delete jenkins namespace
+      kubernetes.core.k8s:
+        name: jenkins
+        api_version: v1
+        kind: Namespace
+        state: absent

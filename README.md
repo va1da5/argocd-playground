@@ -28,3 +28,6 @@ ansible-playbook destroy.yml
 - [ArgoCD Series: How to Install ArgoCD on a Single Node Minikube Cluster](https://mycloudjourney.medium.com/argocd-series-how-to-install-argocd-on-a-single-node-minikube-cluster-1d3a46aaad20)
 - [Install and Configure Gitea Git Service on Kubernetes / OpenShift](https://computingforgeeks.com/install-gitea-git-service-on-kubernetes-openshift/)
 - [Gitea Helm Chart](https://gitea.com/gitea/helm-chart/)
+- [Install Jenkins in Kubernetes](https://www.jenkins.io/doc/book/installing/kubernetes/)
+- [Jenkins: Using Docker with Pipeline](https://www.jenkins.io/doc/book/pipeline/docker/)
+- [How to deploy Jenkins on Kubernetes for CI/CD (DevOps)](https://www.youtube.com/watch?v=eRWIJGF3Y2g)

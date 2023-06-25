@@ -115,3 +115,57 @@
       kubernetes.core.k8s:
         state: present
         template: "argocd-job.manifest.yml"
+
+- name: Deploy Jenkins
+  hosts: localhost
+  tags: ["jenkins"]
+  vars:
+    namespace: jenkins
+    username: admin
+  tasks:
+    - name: Create a k8s namespace
+      kubernetes.core.k8s:
+        name: "{{ namespace }}"
+        api_version: v1
+        kind: Namespace
+        state: present
+
+    - name: Add jenkins chart repo
+      kubernetes.core.helm_repository:
+        name: jenkins
+        repo_url: https://charts.jenkins.io
+
+    - name: Deploy 4.3.28 version of Jenkins chart
+      kubernetes.core.helm:
+        name: jenkins
+        chart_ref: jenkins/jenkins
+        chart_version: 4.3.28 # helm search repo jenkins
+        namespace: "{{ namespace }}"
+
+    - name: Wait until ready
+      ansible.builtin.shell: kubectl --namespace {{ namespace }} rollout status --watch --timeout=1s statefulset/jenkins | grep complete
+      register: rollout_status
+      until: "rollout_status is not failed"
+      retries: 12
+      delay: 10
+
+    - name: Get Jenkins admin password
+      ansible.builtin.shell: kubectl exec --namespace {{ namespace }} -it svc/jenkins -c jenkins -- /bin/cat /run/secrets/additional/chart-admin-password
+      register: secret_output
+
+    - name: Create demo pipeline
+      vars:
+        host: http://jenkins.jenkins.svc:8080
+        username: admin
+        password: "{{ secret_output.stdout }}"
+      kubernetes.core.k8s:
+        state: present
+        template: "jenkins-job.manifest.yml"
+
+    - name: Print details
+      ansible.builtin.debug:
+        msg:
+          - "Enable port-forwarding: kubectl --namespace {{ namespace }} port-forward svc/jenkins 8080:8080"
+          - "Host: http://localhost:8080"
+          - "Username: {{ username }}"
+          - "Password: {{ secret_output.stdout }}"
